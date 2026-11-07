@@ -2,9 +2,9 @@ import { createServer } from 'node:net'
 
 import { PGlite } from '@electric-sql/pglite'
 import { serve } from '@hono/node-server'
-import { Hono } from 'hono'
-import { createLocalJWKSet, exportJWK, generateKeyPair, type JSONWebKeySet, jwtVerify, SignJWT } from 'jose'
+import { createLocalJWKSet, type JSONWebKeySet, jwtVerify } from 'jose'
 
+import { type FakeUser, fakeOidcApp } from '../dev/fake-oidc'
 import { createApp } from '../src/app'
 import { type Config, loadConfig } from '../src/config'
 import { type Db, postgresDb } from '../src/db'
@@ -70,72 +70,16 @@ export async function riptideDb(): Promise<Db> {
 	return db
 }
 
-export interface FakeUser {
-	sub: string
-	email: string
-	email_verified?: boolean
-	given_name?: string
-	family_name?: string
-	groups?: string[]
-}
-
-/** Minimal Keycloak stand-in: discovery, /auth that logs in `nextUser` immediately, /token with PKCE, JWKS, logout. */
+/** The dev fake IdP on a free port, as an `OIDC_ISSUER`. */
 export async function startFakeOidc() {
 	const port = await freePort()
-	const issuer = `http://127.0.0.1:${port}/realms/test`
-	const { privateKey, publicKey } = await generateKeyPair('RS256')
-	const jwk = { ...(await exportJWK(publicKey)), kid: 'fake', alg: 'RS256', use: 'sig' }
-	const codes = new Map<string, { user: FakeUser; nonce: string; challenge: string; clientId: string }>()
-	const state = { nextUser: undefined as FakeUser | undefined, clientSecret: 'oidc-secret' }
-
-	const app = new Hono().basePath('/realms/test')
-	app.get('/.well-known/openid-configuration', (c) =>
-		c.json({
-			issuer,
-			authorization_endpoint: `${issuer}/auth`,
-			token_endpoint: `${issuer}/token`,
-			jwks_uri: `${issuer}/certs`,
-			end_session_endpoint: `${issuer}/logout`,
-		}),
-	)
-	app.get('/certs', (c) => c.json({ keys: [jwk] }))
-	app.get('/auth', (c) => {
-		const q = c.req.query()
-		if (!state.nextUser || q.code_challenge_method !== 'S256' || !q.redirect_uri) return c.text('bad request', 400)
-		const code = crypto.randomUUID()
-		codes.set(code, {
-			user: state.nextUser,
-			nonce: q.nonce ?? '',
-			challenge: q.code_challenge ?? '',
-			clientId: q.client_id ?? '',
-		})
-		return c.redirect(`${q.redirect_uri}?code=${code}&state=${encodeURIComponent(q.state ?? '')}`)
-	})
-	app.post('/token', async (c) => {
-		const body = Object.fromEntries(new URLSearchParams(await c.req.text()))
-		const grant = codes.get(body.code ?? '')
-		codes.delete(body.code ?? '')
-		if (
-			!grant ||
-			body.client_secret !== state.clientSecret ||
-			sha256(body.code_verifier ?? '') !== grant.challenge
-		) {
-			return c.json({ error: 'invalid_grant' }, 400)
-		}
-		const idToken = await new SignJWT({ email_verified: true, ...grant.user, nonce: grant.nonce })
-			.setProtectedHeader({ alg: 'RS256', kid: 'fake' })
-			.setIssuer(issuer)
-			.setAudience(grant.clientId)
-			.setSubject(grant.user.sub)
-			.setIssuedAt()
-			.setExpirationTime('5m')
-			.sign(privateKey)
-		return c.json({ access_token: 'unused', token_type: 'Bearer', id_token: idToken })
-	})
-	app.get('/logout', (c) => c.text('logged out'))
-
+	const { app, state } = await fakeOidcApp('test', 'oidc-secret')
 	const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })
-	return { issuer, state, close: () => new Promise<void>((resolve) => server.close(() => resolve())) }
+	return {
+		issuer: `http://127.0.0.1:${port}/realms/test`,
+		state,
+		close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+	}
 }
 
 export type FakeOidc = Awaited<ReturnType<typeof startFakeOidc>>

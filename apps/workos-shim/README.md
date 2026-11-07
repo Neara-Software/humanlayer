@@ -9,6 +9,7 @@ bun src/main.ts                                   # serve
 bun src/cli.ts seed --org-name Neara --riptide-database-url postgres://...   # prints SHIM_DEFAULT_ORG_ID=org_...
 bun src/cli.ts rotate-key                         # new RS256 key signs from now on; old keys stay in JWKS
 bun vitest run                                    # PGlite; set SHIM_TEST_DATABASE_URL to use real Postgres
+bun dev/fake-oidc.ts                              # dev IdP: OIDC_ISSUER=http://127.0.0.1:8721/realms/dev, secret dev-secret
 ```
 
 | Env                                                                  | Meaning                                                                                                   |
