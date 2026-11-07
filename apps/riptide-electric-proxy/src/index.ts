@@ -53,7 +53,7 @@ const app = createApp({
 	db,
 })
 
-const server = serve({ fetch: app.fetch, port: PORT })
+const server = serve({ fetch: app.fetch, port: PORT, hostname: process.env.RIPTIDE_ELECTRIC_PROXY_HOST })
 if (!(server instanceof Server)) {
 	throw new Error(`Expected http.Server but got ${server.constructor.name}`)
 }

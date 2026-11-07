@@ -19,7 +19,7 @@ async function main(): Promise<void> {
 	}
 
 	const { app } = await import('./app')
-	const server = serve({ fetch: app.fetch, port: PORT })
+	const server = serve({ fetch: app.fetch, port: PORT, hostname: process.env.RIPTIDE_API_HOST })
 	if (!(server instanceof Server)) {
 		await appRuntime.dispose()
 		throw new Error(`Expected http.Server but got ${server.constructor.name}`)
