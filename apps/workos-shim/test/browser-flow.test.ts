@@ -146,16 +146,41 @@ describe('browser AuthKit flow', () => {
 			role: 'member',
 		})
 
+		// Logout revokes the shim session only and goes straight back to the app.
 		const logoutUrl = authkit.getLogoutUrl({ sessionId: String(switchedClaims.sid), returnTo: `${APP_ORIGIN}/` })
-		const toIdp = new URL(location(await get(logoutUrl.toString())))
-		expect(toIdp.origin + toIdp.pathname).toBe(`${oidc.issuer}/logout`)
-		expect(toIdp.searchParams.get('post_logout_redirect_uri')).toBe(`${APP_ORIGIN}/`)
-		expect(toIdp.searchParams.get('id_token_hint')).toBeTruthy()
+		expect(location(await get(logoutUrl.toString()))).toBe(`${APP_ORIGIN}/`)
 		const afterLogout = await authenticate(shim, {
 			grant_type: 'refresh_token',
 			refresh_token: switched.refreshToken,
 		})
 		expect(afterLogout.json.error).toBe('invalid_grant')
+	})
+
+	it('falls back to the shim origin for a return_to that is not allowed', async () => {
+		const res = await get(
+			`${shim.origin}/user_management/sessions/logout?session_id=x&return_to=${encodeURIComponent('https://evil.test/')}`,
+		)
+		expect(location(res)).toBe(`${shim.origin}/`)
+	})
+
+	it('ends the Keycloak session too with SHIM_OIDC_LOGOUT=true', async () => {
+		const login = await browserLogin(shim, oidc, { sub: 'kc-member', email: 'member@neara.com' })
+		const auth = await authenticate(shim, {
+			grant_type: 'authorization_code',
+			code: login.code ?? '',
+			code_verifier: login.verifier,
+		})
+		const { sid } = (await verifyLikeRiptide(shim, auth.json.access_token)).payload
+		shim.cfg.oidcLogout = true
+		try {
+			const logoutUrl = authkit.getLogoutUrl({ sessionId: String(sid), returnTo: `${APP_ORIGIN}/` })
+			const toIdp = new URL(location(await get(logoutUrl.toString())))
+			expect(toIdp.origin + toIdp.pathname).toBe(`${oidc.issuer}/logout`)
+			expect(toIdp.searchParams.get('post_logout_redirect_uri')).toBe(`${APP_ORIGIN}/`)
+			expect(toIdp.searchParams.get('id_token_hint')).toBeTruthy()
+		} finally {
+			shim.cfg.oidcLogout = false
+		}
 	})
 
 	it('gives a plain member the member role', async () => {

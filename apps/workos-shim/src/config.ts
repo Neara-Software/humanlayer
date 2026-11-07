@@ -12,6 +12,7 @@ export interface Config {
 	adminEmails: string[]
 	defaultOrgId: string | undefined
 	accessTokenTtlSeconds: number
+	oidcLogout: boolean
 }
 
 type Env = Record<string, string | undefined>
@@ -31,7 +32,7 @@ function list(value: string | undefined): string[] {
 
 export function loadConfig(env: Env = process.env): Config {
 	return {
-		port: Number(env.SHIM_PORT ?? 4300),
+		port: Number(env.SHIM_PORT ?? 8720),
 		host: env.SHIM_HOST ?? '127.0.0.1',
 		publicOrigin: required(env, 'SHIM_PUBLIC_ORIGIN').replace(/\/$/, ''),
 		databaseUrl: required(env, 'SHIM_DATABASE_URL'),
@@ -49,5 +50,6 @@ export function loadConfig(env: Env = process.env): Config {
 		adminEmails: list(env.SHIM_ADMIN_EMAILS).map((e) => e.toLowerCase()),
 		defaultOrgId: env.SHIM_DEFAULT_ORG_ID || undefined,
 		accessTokenTtlSeconds: Number(env.ACCESS_TOKEN_TTL_SECONDS ?? 3600),
+		oidcLogout: env.SHIM_OIDC_LOGOUT === 'true',
 	}
 }

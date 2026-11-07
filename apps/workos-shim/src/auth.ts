@@ -280,9 +280,15 @@ export function authRoutes(app: Hono, ctx: Ctx) {
 		if (session) await db.query('DELETE FROM refresh_tokens WHERE session_id = $1', [sessionId])
 		const safeReturnTo =
 			returnTo && URL.canParse(returnTo) && allowedOrigins.has(new URL(returnTo).origin) ? returnTo : undefined
-		const url = await oidc.endSessionUrl({ idToken: session?.oidc_id_token, postLogoutRedirectUri: safeReturnTo })
-		if (url) return c.redirect(url)
-		return safeReturnTo ? c.redirect(safeReturnTo) : page(c, 'Signed out', '<p>You are signed out.</p>')
+		// Ending the Keycloak session signs the user out of every app on the realm, so it is opt-in.
+		if (cfg.oidcLogout) {
+			const url = await oidc.endSessionUrl({
+				idToken: session?.oidc_id_token,
+				postLogoutRedirectUri: safeReturnTo,
+			})
+			if (url) return c.redirect(url)
+		}
+		return c.redirect(safeReturnTo ?? `${cfg.publicOrigin}/`)
 	})
 
 	app.get('/sso/jwks/:clientId', async (c) => {

@@ -13,12 +13,12 @@ bun vitest run                                    # PGlite; set SHIM_TEST_DATABA
 
 | Env                                                                  | Meaning                                                                                                   |
 | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `SHIM_PORT` (4300), `SHIM_HOST` (127.0.0.1)                          | bind address                                                                                              |
+| `SHIM_PORT` (8720), `SHIM_HOST` (127.0.0.1)                          | bind address                                                                                              |
 | `SHIM_PUBLIC_ORIGIN`                                                 | public URL; token `iss`, device `verification_uri`, Keycloak callback `<origin>/user_management/callback` |
 | `SHIM_DATABASE_URL`                                                  | Postgres                                                                                                  |
 | `SHIM_API_KEY`                                                       | the API's `WORKOS_API_KEY`; Bearer for directory endpoints, accepted as `client_secret`                   |
 | `SHIM_CLIENT_ID`                                                     | the clients' `WORKOS_CLIENT_ID`                                                                           |
-| `SHIM_ALLOWED_REDIRECT_URIS`                                         | comma list, exact match on authorize; their origins are allowed logout `return_to`                        |
+| `SHIM_ALLOWED_REDIRECT_URIS`                                         | comma list, exact match on authorize; their origins are the allowed logout `return_to` targets            |
 | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_SCOPES` | upstream IdP (discovery)                                                                                  |
 | `SHIM_ALLOWED_EMAIL_DOMAINS`, `SHIM_REQUIRED_GROUP`                  | login policy (verified email required)                                                                    |
 | `SHIM_ADMIN_EMAILS`                                                  | get role `admin` in the default org at every login                                                        |
