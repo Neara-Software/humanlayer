@@ -2,17 +2,46 @@ import { anthropic } from '@ai-sdk/anthropic'
 import { openai } from '@ai-sdk/openai'
 import type { LanguageModelV3 } from '@ai-sdk/provider'
 import * as Sentry from '@sentry/core'
+import { wrapLanguageModel } from 'ai'
 
 import { logger } from '../logger'
 import { createReliableLanguageModel } from '../reliable-language-model'
 
 export type ModelAlias = 'sonnet' | 'haiku'
 
-// AI_MODEL_SONNET / AI_MODEL_HAIKU let a self-hosted gateway (e.g. LiteLLM) map the
-// aliases to the model names it offers.
+// Self-hosting through a gateway such as LiteLLM:
+// - AI_MODEL_SONNET / AI_MODEL_HAIKU map the aliases to the model names it offers.
+// - AI_ANTHROPIC_STRUCTURED_OUTPUT_MODE=jsonTool makes structured output use a tool
+//   call. The SDK otherwise sends native output_format for model names it doesn't
+//   know, which a gateway in front of Bedrock ignores, so parsing fails.
+const structuredOutputMode = process.env.AI_ANTHROPIC_STRUCTURED_OUTPUT_MODE?.trim()
+
+function anthropicModel(modelId: string): LanguageModelV3 {
+	const model = anthropic(modelId)
+	if (!structuredOutputMode) return model
+	return wrapLanguageModel({
+		model,
+		middleware: {
+			specificationVersion: 'v3',
+			transformParams: async ({ params }) => ({
+				...params,
+				providerOptions: {
+					...params.providerOptions,
+					anthropic: { structuredOutputMode, ...params.providerOptions?.anthropic },
+				},
+			}),
+		},
+	})
+}
+
 const PRIMARY: Record<ModelAlias, LanguageModelV3> = {
-	sonnet: anthropic(process.env.AI_MODEL_SONNET?.trim() || 'claude-sonnet-5'),
-	haiku: anthropic(process.env.AI_MODEL_HAIKU?.trim() || 'claude-haiku-4-5'),
+	sonnet: anthropicModel(process.env.AI_MODEL_SONNET?.trim() || 'claude-sonnet-5'),
+	haiku: anthropicModel(process.env.AI_MODEL_HAIKU?.trim() || 'claude-haiku-4-5'),
+}
+
+/** The Anthropic model behind an alias, without the OpenAI fallback. */
+export function primaryModel(alias: ModelAlias): LanguageModelV3 {
+	return PRIMARY[alias]
 }
 
 const isFallbackEnabled = Boolean(process.env.OPENAI_API_KEY?.trim())
