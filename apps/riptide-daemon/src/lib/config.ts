@@ -1,7 +1,7 @@
 import { access, readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 
+import { riptideHome } from '@/lib/riptide-home'
 import { type CollectionConfig, expandPath, getActiveCollection, migrateConfig, type RpiConfig } from '@/lib/rpi-config'
 import logger from '@/logger'
 
@@ -9,10 +9,10 @@ import logger from '@/logger'
 export type { CollectionConfig, RpiConfig }
 
 /**
- * Get the canonical config path: ~/.humanlayer/riptide/config.json
+ * Get the canonical config path: {riptideHome}/config.json (~/.humanlayer/riptide by default)
  */
 export function getCanonicalConfigPath(): string {
-	return join(homedir(), '.humanlayer', 'riptide', 'config.json')
+	return join(riptideHome(), 'config.json')
 }
 
 /**
@@ -42,7 +42,7 @@ export async function loadConfig(): Promise<RpiConfig | null> {
  * Get artifacts repo path with fallback chain:
  * 1. RIPTIDE_RPI_ARTIFACTS_REPO env var (override)
  * 2. Collection resolution based on pwd
- * 3. ~/.humanlayer/riptide/rpi-artifacts (default)
+ * 3. {riptideHome}/rpi-artifacts (default)
  */
 export async function getArtifactsRepoPath(pwd?: string): Promise<string> {
 	// Env var takes precedence as override
@@ -66,7 +66,7 @@ export async function getArtifactsRepoPath(pwd?: string): Promise<string> {
 	}
 
 	// Default fallback
-	return join(homedir(), '.humanlayer', 'riptide', 'rpi-artifacts')
+	return join(riptideHome(), 'rpi-artifacts')
 }
 
 /**

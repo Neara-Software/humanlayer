@@ -4,7 +4,8 @@ import { join } from 'node:path'
 
 import type { EnvironmentName } from '../lib/macros'
 
-function credentialsDir(): string {
+/** The CLI's local state directory; the daemon it launches uses the same one. */
+export function credentialsDir(): string {
 	return process.env.HUMANLAYER_RIPTIDE_HOME ?? join(homedir(), '.humanlayer', 'riptide')
 }
 

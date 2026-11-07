@@ -1,5 +1,6 @@
-import { homedir } from 'node:os'
 import { resolve } from 'node:path'
+
+import { riptideHome } from '@/lib/riptide-home'
 
 /**
  * Extract file_path from tool input for Read/Write/Edit tools.
@@ -43,14 +44,14 @@ export function isWhitelistedBashCommand(command: string): boolean {
  * Checks:
  * - rpi/ (legacy)
  * - .humanlayer/tasks/ (symlink path)
- * - ~/.humanlayer/riptide/artifacts/ (UUID storage path)
+ * - {riptideHome}/artifacts/ (UUID storage path, same as getArtifactStoragePath)
  * Handles both absolute and relative paths.
  */
 export function isArtifactPath(rawPath: string, cwd: string): boolean {
 	const filePath = rawPath.startsWith('/') ? rawPath : resolve(cwd, rawPath)
 	const rpiPrefix = `${resolve(cwd, 'rpi')}/`
 	const humanlayerPrefix = `${resolve(cwd, '.humanlayer', 'tasks')}/`
-	const artifactStoragePrefix = `${resolve(homedir(), '.humanlayer', 'riptide', 'artifacts')}/`
+	const artifactStoragePrefix = `${resolve(riptideHome(), 'artifacts')}/`
 	return (
 		filePath.startsWith(rpiPrefix) ||
 		filePath.startsWith(humanlayerPrefix) ||

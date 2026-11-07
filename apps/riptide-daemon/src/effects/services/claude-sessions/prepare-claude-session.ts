@@ -20,6 +20,7 @@ import { Sentry } from '@/instrument'
 import { getArtifactSymlinkPath } from '@/lib/artifact-paths'
 import { createArtifactSyncLedger } from '@/lib/artifact-sync-ledger'
 import { orgTelemetryCache } from '@/lib/org-telemetry-settings'
+import { riptideHome } from '@/lib/riptide-home'
 import { renderSessionInformation } from '@/lib/session-information'
 import { isInGitWorktree } from '@/lib/workspace/detect-worktree'
 import { PROJECT_WORKSPACE_SOURCE_PATH } from '@/lib/workspace/project-workspace-view'
@@ -389,7 +390,7 @@ export function prepareClaudeRun(input: ExecuteClaudeSessionInput, configuration
 				...configuredRepoContext.additionalDirectories,
 				rpiPluginPath,
 				humanlayerPluginPath,
-				path.join(configuration.homeDirectory, '.humanlayer', 'riptide', 'artifacts'),
+				path.join(riptideHome(configuration.homeDirectory), 'artifacts'),
 			],
 			systemPromptAdditions,
 			resumeSessionId: input.resumeSessionId,

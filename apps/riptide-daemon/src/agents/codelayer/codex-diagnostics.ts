@@ -1,11 +1,13 @@
+import { join } from 'node:path'
+
 import type { CodexDiagnosticsContext, CodexDiagnosticSeverity } from '@humanlayer/agentlayer-provider-openai-codex'
 import * as NodeLogger from '@humanlayer/logger/node'
 
 import { Sentry } from '@/instrument'
-import { normalizePath } from '@/lib/utils'
+import { riptideHome } from '@/lib/riptide-home'
 import logger from '@/logger'
 
-const DIAGNOSTICS_LOG_PATH = normalizePath('~/.humanlayer/riptide/logs/codex-provider-logs.jsonl')
+const DIAGNOSTICS_LOG_PATH = join(riptideHome(), 'logs', 'codex-provider-logs.jsonl')
 
 const diagnosticsLogger = new NodeLogger.Logger({
 	name: 'codex-diagnostics',

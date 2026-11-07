@@ -1,17 +1,15 @@
 import { access, chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { riptideHome } from '@/lib/riptide-home'
 import logger from '@/logger'
 
 import { HUMANLAYER_PLUGIN_VERSION, humanlayerEmbeddedFiles } from './bundled-humanlayer-plugin'
 import { embeddedFiles, PLUGIN_VERSION } from './bundled-rpi-plugin'
 
-/**
- * Default base directory for Riptide plugins
- */
-const DEFAULT_PLUGINS_DIR = join(homedir(), '.humanlayer', 'riptide', 'plugins')
+/** Default base directory for Riptide plugins */
+const defaultPluginsDir = () => join(riptideHome(), 'plugins')
 const MODULE_DIRECTORY = dirname(fileURLToPath(import.meta.url))
 const pendingPluginWrites = new Map<string, Promise<string>>()
 
@@ -55,11 +53,11 @@ export function getRpiPluginPath(baseDir?: string): string {
 	// (ci-scripts/stamp-plugin-versions.ts), so released daemons always get a
 	// fresh dir when plugin content changed; local dev serves from source via
 	// RIPTIDE_DAEMON_FORCE_LOCAL_PLUGIN and never uses this path
-	return join(baseDir ?? DEFAULT_PLUGINS_DIR, 'riptide-rpi', PLUGIN_VERSION)
+	return join(baseDir ?? defaultPluginsDir(), 'riptide-rpi', PLUGIN_VERSION)
 }
 
 export function getHumanlayerPluginPath(baseDir?: string): string {
-	return join(baseDir ?? DEFAULT_PLUGINS_DIR, 'riptide-humanlayer', HUMANLAYER_PLUGIN_VERSION)
+	return join(baseDir ?? defaultPluginsDir(), 'riptide-humanlayer', HUMANLAYER_PLUGIN_VERSION)
 }
 
 async function writeEmbeddedPluginFiles(
@@ -123,7 +121,7 @@ export async function ensureRpiPluginOnDisk(baseDir?: string): Promise<string> {
 		logger.warn({ sourcePluginPath }, 'Dev mode detected but source plugin not found, falling back to bundled')
 	}
 
-	const pluginsDir = baseDir ?? DEFAULT_PLUGINS_DIR
+	const pluginsDir = baseDir ?? defaultPluginsDir()
 	const pluginDir = getRpiPluginPath(baseDir)
 
 	// Fast path: plugin already exists
@@ -159,7 +157,7 @@ export async function ensureHumanlayerPluginOnDisk(baseDir?: string): Promise<st
 		logger.warn({ sourcePluginPath }, 'Dev mode detected but HumanLayer plugin not found, falling back to bundled')
 	}
 
-	const pluginsDir = baseDir ?? DEFAULT_PLUGINS_DIR
+	const pluginsDir = baseDir ?? defaultPluginsDir()
 	const pluginDir = getHumanlayerPluginPath(baseDir)
 	if (await pathExists(pluginDir)) return pluginDir
 

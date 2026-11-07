@@ -2,8 +2,7 @@ use std::path::PathBuf;
 
 /// Get the base log directory path
 pub fn get_log_base_dir() -> PathBuf {
-    let home = dirs::home_dir().expect("Failed to get home directory");
-    let base = home.join(".humanlayer").join("riptide").join("logs");
+    let base = crate::riptide_home::riptide_dir().join("logs");
     match std::env::var("DEVSTACK_ID").ok().filter(|value| !value.is_empty()) {
         Some(stack_id) => base.join(stack_id),
         None => base,

@@ -8,6 +8,7 @@ import * as Layer from 'effect/Layer'
 import * as Match from 'effect/Match'
 import * as Path from 'effect/Path'
 
+import { riptideHome } from '../../../lib/riptide-home'
 import type { AcquireDaemonInstanceLockInput } from './daemon-instance-lock.service'
 import { DaemonInstanceLeaseState, DaemonInstanceLock } from './daemon-instance-lock.service'
 import { DaemonInstanceAlreadyRunning, DaemonInstanceLockError } from './errors'
@@ -43,7 +44,7 @@ export const DaemonInstanceLockLive = Layer.effect(
 						),
 					),
 			)
-			const lockDirectory = pathService.join(homeDirectory, '.humanlayer', 'riptide', 'daemon-locks')
+			const lockDirectory = pathService.join(riptideHome(homeDirectory), 'daemon-locks')
 			const lockPath = pathService.join(lockDirectory, `${tupleHash}.lock`)
 			yield* fileSystem
 				.makeDirectory(lockDirectory, { recursive: true })

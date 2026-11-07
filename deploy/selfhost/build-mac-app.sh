@@ -16,6 +16,9 @@ export VITE_PUBLIC_WORKOS_CLIENT_ID=client_humanlayer_selfhost VITE_PUBLIC_WORKO
 export VITE_PUBLIC_BLOCK_NEW_ORG_CREATION=true
 export RIPTIDE_DAEMON_API_ORIGIN=$origin/api RIPTIDE_DAEMON_SYNC_ORIGIN=$origin/sync
 export RIPTIDE_DAEMON_APP_ORIGIN=$origin RIPTIDE_DAEMON_CLOUD_ORIGIN=$origin:8443
+# Keeps its local state (host id, artifacts, plugins, config, logs) in ~/.humanlayer/riptide-self,
+# apart from the official app's ~/.humanlayer/riptide. Baked into the native app at compile time.
+export HUMANLAYER_RIPTIDE_DIRNAME=riptide-self
 export NODE_OPTIONS=--max-old-space-size=24576
 bun install --frozen-lockfile
 cd apps/riptide-native

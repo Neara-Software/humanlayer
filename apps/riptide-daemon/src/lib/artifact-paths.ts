@@ -1,17 +1,17 @@
 import { appendFile, lstat, mkdir, readdir, readlink, rename, rm, symlink, unlink } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { checkArtifactsGitignored } from '@/effects/check-artifacts-gitignored'
 import type { DaemonRuntime } from '@/effects/runtime'
+import { riptideHome } from '@/lib/riptide-home'
 import { logger } from '@/logger'
 
 /**
  * Get the UUID-based artifact storage path.
- * ~/.humanlayer/riptide/artifacts/{taskId}/
+ * {riptideHome}/artifacts/{taskId}/ (~/.humanlayer/riptide by default)
  */
 export function getArtifactStoragePath(taskId: string): string {
-	return join(homedir(), '.humanlayer', 'riptide', 'artifacts', taskId)
+	return join(riptideHome(), 'artifacts', taskId)
 }
 
 /**

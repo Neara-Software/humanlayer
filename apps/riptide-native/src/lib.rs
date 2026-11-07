@@ -5,6 +5,7 @@ mod daemon;
 mod filescan;
 mod logging;
 mod pty;
+mod riptide_home;
 mod sentry;
 mod shell_env;
 mod workspace_setup;
@@ -66,8 +67,7 @@ struct WindowState {
 struct PendingDeepLink(Mutex<Option<String>>);
 
 fn get_window_store_path(is_local: bool, is_dev: bool) -> PathBuf {
-    let home = dirs::home_dir().expect("Failed to get home directory");
-    let riptide_dir = home.join(".humanlayer").join("riptide");
+    let riptide_dir = riptide_home::riptide_dir();
 
     // Ensure directory exists
     std::fs::create_dir_all(&riptide_dir).ok();

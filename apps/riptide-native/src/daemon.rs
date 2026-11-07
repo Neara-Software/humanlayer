@@ -443,8 +443,7 @@ impl DaemonManager {
     }
 
     fn get_host_id_path() -> PathBuf {
-        let home = dirs::home_dir().expect("Failed to get home directory");
-        let riptide_dir = home.join(".humanlayer").join("riptide");
+        let riptide_dir = crate::riptide_home::riptide_dir();
         match env::var("DEVSTACK_ID")
             .ok()
             .filter(|value| !value.is_empty())
@@ -879,6 +878,19 @@ impl DaemonManager {
             if let Ok(value) = env::var(name) {
                 daemon_env.retain(|(key, _)| key != name);
                 daemon_env.push((name.to_string(), value));
+            }
+        }
+
+        // A relocated riptide dir (renamed build or HUMANLAYER_RIPTIDE_HOME) moves riptided's state
+        // and logs with it. The default passes nothing, as upstream does.
+        if !crate::riptide_home::is_default_riptide_dir() {
+            let riptide_dir = crate::riptide_home::riptide_dir();
+            for (name, value) in [
+                ("HUMANLAYER_RIPTIDE_HOME", riptide_dir.clone()),
+                ("LOG_BASE", riptide_dir.join("logs")),
+            ] {
+                daemon_env.retain(|(key, _)| key != name);
+                daemon_env.push((name.to_string(), value.to_string_lossy().into_owned()));
             }
         }
 

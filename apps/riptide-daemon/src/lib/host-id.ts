@@ -1,14 +1,12 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 
+import { riptideHome } from '@/lib/riptide-home'
 import logger from '@/logger'
-
-const HOST_ID_DIR = join(homedir(), '.humanlayer', 'riptide')
 
 function hostIdFile(): string {
 	const stackId = process.env.DEVSTACK_ID
-	return join(HOST_ID_DIR, stackId ? `host_id_${stackId}` : 'host_id')
+	return join(riptideHome(), stackId ? `host_id_${stackId}` : 'host_id')
 }
 
 // Cache for the host ID
@@ -36,7 +34,7 @@ export async function getHostId(): Promise<string> {
 	}
 
 	// Ensure directory exists
-	await mkdir(HOST_ID_DIR, { recursive: true })
+	await mkdir(riptideHome(), { recursive: true })
 
 	// Generate new host_id
 	const newId = crypto.randomUUID()

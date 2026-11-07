@@ -12,8 +12,8 @@ pub fn migrate_configs_on_boot() {
         }
     };
 
-    // Migrate ~/.humanlayer/riptide/config.json
-    let riptide_config = home.join(".humanlayer").join("riptide").join("config.json");
+    // Migrate ~/.humanlayer/riptide/config.json (or the relocated riptide dir's)
+    let riptide_config = crate::riptide_home::riptide_dir().join("config.json");
     if let Err(e) = migrate_config_file(&riptide_config) {
         log::warn!("Failed to migrate riptide config: {}", e);
     }

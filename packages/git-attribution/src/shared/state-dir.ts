@@ -3,8 +3,8 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 /**
- * The machine-local HumanLayer state directory (`~/.humanlayer/riptide` unless RIPTIDE_STATE_DIR
- * overrides it, which tests and relocated installs do).
+ * The machine-local HumanLayer state directory: RIPTIDE_STATE_DIR (tests, relocated installs), else
+ * HUMANLAYER_RIPTIDE_HOME (the daemon's state root), else `~/.humanlayer/riptide`.
  *
  * Deliberately a LEAF module (node builtins only): it is read by BOTH the daemon (long-lived
  * process) and the CLI hook processes that Claude Code spawns per tool call, and those two must
@@ -12,7 +12,11 @@ import { join } from 'node:path'
  * splits into two stores that never meet.
  */
 export function riptideStateDir(): string {
-	return process.env.RIPTIDE_STATE_DIR || join(homedir(), '.humanlayer', 'riptide')
+	return (
+		process.env.RIPTIDE_STATE_DIR ||
+		process.env.HUMANLAYER_RIPTIDE_HOME ||
+		join(homedir(), '.humanlayer', 'riptide')
+	)
 }
 
 /**
