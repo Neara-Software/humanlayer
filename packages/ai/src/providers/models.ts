@@ -8,9 +8,11 @@ import { createReliableLanguageModel } from '../reliable-language-model'
 
 export type ModelAlias = 'sonnet' | 'haiku'
 
+// AI_MODEL_SONNET / AI_MODEL_HAIKU let a self-hosted gateway (e.g. LiteLLM) map the
+// aliases to the model names it offers.
 const PRIMARY: Record<ModelAlias, LanguageModelV3> = {
-	sonnet: anthropic('claude-sonnet-5'),
-	haiku: anthropic('claude-haiku-4-5'),
+	sonnet: anthropic(process.env.AI_MODEL_SONNET?.trim() || 'claude-sonnet-5'),
+	haiku: anthropic(process.env.AI_MODEL_HAIKU?.trim() || 'claude-haiku-4-5'),
 }
 
 const isFallbackEnabled = Boolean(process.env.OPENAI_API_KEY?.trim())
