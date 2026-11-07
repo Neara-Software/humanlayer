@@ -6,6 +6,8 @@ import type { Db } from '../src/db'
 import {
 	APP_ORIGIN,
 	authenticate,
+	type AuthKitHttpClient,
+	authkitClient,
 	browserLogin,
 	CLIENT_ID,
 	type FakeOidc,
@@ -19,19 +21,6 @@ import {
 	verifyLikeRiptide,
 } from './helpers'
 
-interface AuthKitHttpClient {
-	authenticateWithCode(input: { code: string; codeVerifier: string; useCookie: boolean }): Promise<any>
-	authenticateWithRefreshToken(input: {
-		refreshToken: string
-		organizationId?: string
-		useCookie: boolean
-	}): Promise<any>
-	getLogoutUrl(input: { sessionId: string; returnTo: string }): URL
-}
-
-// authkit-js does not export HttpClient; load the source module the browser bundle is built from.
-const authkitHttpClientModule = '@workos-inc/authkit-js/src/http-client'
-
 let oidc: FakeOidc
 let shim: Shim
 let riptide: Db
@@ -44,15 +33,7 @@ beforeAll(async () => {
 	riptide = await riptideDb()
 	defaultOrg = await seed(shim.db, riptide, 'Neara')
 	shim.cfg.defaultOrgId = defaultOrg.orgId
-	const { HttpClient } = (await import(authkitHttpClientModule)) as {
-		HttpClient: new (options: {
-			clientId: string
-			hostname: string
-			port: number
-			https: boolean
-		}) => AuthKitHttpClient
-	}
-	authkit = new HttpClient({ clientId: CLIENT_ID, hostname: '127.0.0.1', port: shim.port, https: false })
+	authkit = await authkitClient(shim)
 })
 
 afterAll(async () => {

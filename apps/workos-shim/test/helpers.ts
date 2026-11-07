@@ -40,7 +40,7 @@ export function pgliteDb(): Db {
  * PGlite by default. Set SHIM_TEST_DATABASE_URL (a Postgres URL with CREATE DATABASE rights) to run
  * against real Postgres through postgres.js, the production driver; each shim then gets a throwaway database.
  */
-async function testDb(): Promise<Db> {
+export async function testDb(): Promise<Db> {
 	const adminUrl = process.env.SHIM_TEST_DATABASE_URL
 	if (!adminUrl) return pgliteDb()
 	const name = `workos_shim_test_${crypto.randomUUID().replaceAll('-', '')}`
@@ -84,9 +84,13 @@ export async function startFakeOidc() {
 
 export type FakeOidc = Awaited<ReturnType<typeof startFakeOidc>>
 
-export async function startShim(oidc: FakeOidc, env: Record<string, string> = {}) {
+/** With `oidc` the shim signs in through the fake IdP; without it the shim runs in tailscale mode. */
+export async function startShim(oidc: FakeOidc | undefined, env: Record<string, string> = {}, sharedDb?: Db) {
 	const port = await freePort()
 	const origin = `http://127.0.0.1:${port}`
+	const authEnv = oidc
+		? { OIDC_ISSUER: oidc.issuer, OIDC_CLIENT_ID: 'humanlayer', OIDC_CLIENT_SECRET: oidc.state.clientSecret }
+		: { SHIM_AUTH_MODE: 'tailscale' }
 	const cfg: Config = loadConfig({
 		SHIM_PORT: String(port),
 		SHIM_PUBLIC_ORIGIN: origin,
@@ -94,14 +98,12 @@ export async function startShim(oidc: FakeOidc, env: Record<string, string> = {}
 		SHIM_API_KEY: API_KEY,
 		SHIM_CLIENT_ID: CLIENT_ID,
 		SHIM_ALLOWED_REDIRECT_URIS: `${REDIRECT_URI},${APP_ORIGIN}/`,
-		OIDC_ISSUER: oidc.issuer,
-		OIDC_CLIENT_ID: 'humanlayer',
-		OIDC_CLIENT_SECRET: oidc.state.clientSecret,
 		SHIM_ALLOWED_EMAIL_DOMAINS: 'neara.com',
 		SHIM_ADMIN_EMAILS: 'admin@neara.com',
+		...authEnv,
 		...env,
 	})
-	const db = await testDb()
+	const db = sharedDb ?? (await testDb())
 	const app = await createApp(cfg, db)
 	const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })
 	return {
@@ -111,7 +113,7 @@ export async function startShim(oidc: FakeOidc, env: Record<string, string> = {}
 		db,
 		close: async () => {
 			await new Promise<void>((resolve) => server.close(() => resolve()))
-			await db.close()
+			if (!sharedDb) await db.close()
 		},
 	}
 }
@@ -175,4 +177,30 @@ export async function verifyLikeRiptide(shim: Shim, token: string) {
 	const issuer = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString()).iss
 	const { payload, protectedHeader } = await jwtVerify(token, createLocalJWKSet(jwks), { issuer })
 	return { payload, protectedHeader }
+}
+
+export interface AuthKitHttpClient {
+	authenticateWithCode(input: { code: string; codeVerifier: string; useCookie: boolean }): Promise<any>
+	authenticateWithRefreshToken(input: {
+		refreshToken: string
+		organizationId?: string
+		useCookie: boolean
+	}): Promise<any>
+	getLogoutUrl(input: { sessionId: string; returnTo: string }): URL
+}
+
+// authkit-js does not export HttpClient; load the source module the browser bundle is built from.
+const authkitHttpClientModule = '@workos-inc/authkit-js/src/http-client'
+
+/** The real AuthKit-JS HTTP client, pointed at a shim. */
+export async function authkitClient(shim: Shim): Promise<AuthKitHttpClient> {
+	const { HttpClient } = (await import(authkitHttpClientModule)) as {
+		HttpClient: new (options: {
+			clientId: string
+			hostname: string
+			port: number
+			https: boolean
+		}) => AuthKitHttpClient
+	}
+	return new HttpClient({ clientId: CLIENT_ID, hostname: '127.0.0.1', port: shim.port, https: false })
 }

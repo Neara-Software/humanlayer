@@ -6,6 +6,7 @@ import { one } from './db'
 import { html, oauthError, page, readBody, safeEqual, str } from './http'
 import { newId, randomToken, sha256 } from './ids'
 import { jwks } from './keys'
+import type { Oidc } from './oidc'
 import type { DeviceCodeRow, PendingLoginRow, UserRow } from './rows'
 import {
 	cleanupExpired,
@@ -13,10 +14,12 @@ import {
 	type Ctx,
 	isActiveMember,
 	issueTokens,
+	identityFromOidc,
 	LoginRejected,
 	onLogin,
-	upsertUserFromOidc,
+	upsertUser,
 } from './store'
+import { tailscaleIdentity } from './tailscale'
 
 const PENDING_LOGIN_TTL = "interval '10 minutes'"
 const DEVICE_CODE_TTL_SECONDS = 300
@@ -36,6 +39,7 @@ function newUserCode(): string {
 const formatUserCode = (code: string) => `${code.slice(0, 4)}-${code.slice(4)}`
 
 export function authRoutes(app: Hono, ctx: Ctx) {
+	// `oidc` is unset in tailscale mode, where the identity comes from `tailscale serve` headers.
 	const { db, cfg, oidc } = ctx
 	const allowedOrigins = new Set(cfg.allowedRedirectUris.map((uri) => new URL(uri).origin))
 
@@ -44,7 +48,7 @@ export function authRoutes(app: Hono, ctx: Ctx) {
 		login_hint?: string
 	}
 
-	async function startLogin(c: Context, pending: LoginRequest) {
+	async function startOidcLogin(c: Context, client: Oidc, pending: LoginRequest) {
 		await cleanupExpired(db)
 		const state = randomToken()
 		const nonce = randomToken()
@@ -66,13 +70,75 @@ export function authRoutes(app: Hono, ctx: Ctx) {
 			],
 		)
 		return c.redirect(
-			await oidc.authorizationUrl({
+			await client.authorizationUrl({
 				state,
 				nonce,
 				codeChallenge: sha256(codeVerifier),
 				loginHint: pending.login_hint,
 			}),
 		)
+	}
+
+	async function deny(c: Context, request: LoginRequest, message: string) {
+		if (request.device_code_id) {
+			await db.query(`UPDATE device_codes SET status = 'denied' WHERE id = $1 AND status = 'pending'`, [
+				request.device_code_id,
+			])
+		}
+		return page(c, 'Access denied', html`<p>${message}</p>`, 403)
+	}
+
+	const tailscaleRequired = (c: Context) =>
+		page(
+			c,
+			'Tailscale sign-in required',
+			"<p>HumanLayer signs you in with your Tailscale identity. Open it from your own tailnet device (tagged/shared devices aren't supported).</p>",
+			403,
+		)
+
+	const tailscaleUser = (c: Context) => tailscaleIdentity((name) => c.req.header(name))
+
+	/** After the user is known: approve the device, or hand an authorization code to the client's redirect_uri. */
+	async function finishLogin(c: Context, request: LoginRequest, user: UserRow, idToken: string | null) {
+		await onLogin(ctx, user)
+		const sessionId = await createSession(ctx, user.id, request.organization_id ?? null, idToken)
+
+		if (request.kind === 'device') {
+			const approved = await one(
+				db,
+				`UPDATE device_codes SET status = 'approved', session_id = $2
+				WHERE id = $1 AND status = 'pending' AND expires_at > now() RETURNING id`,
+				[request.device_code_id, sessionId],
+			)
+			return approved
+				? page(c, 'Signed in', html`<p>Signed in as ${user.email}. You can close this tab.</p>`)
+				: page(c, 'Code expired', '<p>This device code has expired. Start the login again.</p>', 400)
+		}
+
+		const redirectUri = request.client_redirect_uri
+		if (!redirectUri) throw new Error('Authorize login has no redirect_uri')
+		const code = randomToken()
+		await db.query(
+			`INSERT INTO auth_codes (code_hash, session_id, redirect_uri, code_challenge, expires_at)
+			VALUES ($1, $2, $3, $4, now() + interval '10 minutes')`,
+			[sha256(code), sessionId, redirectUri, request.code_challenge ?? null],
+		)
+		const url = new URL(redirectUri)
+		url.searchParams.set('code', code)
+		if (request.client_state) url.searchParams.set('state', request.client_state)
+		return c.redirect(url.toString())
+	}
+
+	async function login(c: Context, request: LoginRequest) {
+		if (oidc) return startOidcLogin(c, oidc, request)
+		const identity = tailscaleUser(c)
+		if (!identity) return tailscaleRequired(c)
+		try {
+			return await finishLogin(c, request, await upsertUser(ctx, identity), null)
+		} catch (error) {
+			if (error instanceof LoginRejected) return deny(c, request, error.message)
+			throw error
+		}
 	}
 
 	// --- Browser flow (AuthKit) ---
@@ -93,7 +159,7 @@ export function authRoutes(app: Hono, ctx: Ctx) {
 			if (q.state) url.searchParams.set('state', q.state)
 			return c.redirect(url.toString())
 		}
-		return startLogin(c, {
+		return login(c, {
 			kind: 'authorize',
 			client_redirect_uri: q.redirect_uri,
 			client_state: q.state,
@@ -103,66 +169,29 @@ export function authRoutes(app: Hono, ctx: Ctx) {
 		})
 	})
 
-	app.get('/user_management/callback', async (c) => {
-		const q = c.req.query()
-		const pending = q.state
-			? await one<PendingLoginRow>(
-					db,
-					'DELETE FROM pending_logins WHERE state = $1 AND expires_at > now() RETURNING *',
-					[q.state],
-				)
-			: undefined
-		if (!pending)
-			return page(c, 'Sign-in expired', '<p>This sign-in attempt has expired. Please start again.</p>', 400)
+	if (oidc) {
+		app.get('/user_management/callback', async (c) => {
+			const q = c.req.query()
+			const pending = q.state
+				? await one<PendingLoginRow>(
+						db,
+						'DELETE FROM pending_logins WHERE state = $1 AND expires_at > now() RETURNING *',
+						[q.state],
+					)
+				: undefined
+			if (!pending)
+				return page(c, 'Sign-in expired', '<p>This sign-in attempt has expired. Please start again.</p>', 400)
+			if (q.error || !q.code) return deny(c, pending, q.error_description ?? q.error ?? 'Sign-in was cancelled.')
 
-		const deny = async (message: string) => {
-			if (pending.device_code_id) {
-				await db.query(`UPDATE device_codes SET status = 'denied' WHERE id = $1 AND status = 'pending'`, [
-					pending.device_code_id,
-				])
+			try {
+				const { claims, idToken } = await oidc.exchangeCode(q.code, pending.code_verifier, pending.nonce)
+				return await finishLogin(c, pending, await upsertUser(ctx, identityFromOidc(claims)), idToken)
+			} catch (error) {
+				if (error instanceof LoginRejected) return deny(c, pending, error.message)
+				throw error
 			}
-			return page(c, 'Access denied', html`<p>${message}</p>`, 403)
-		}
-		if (q.error || !q.code) return deny(q.error_description ?? q.error ?? 'Sign-in was cancelled.')
-
-		let user: UserRow
-		let idToken: string
-		try {
-			const result = await oidc.exchangeCode(q.code, pending.code_verifier, pending.nonce)
-			idToken = result.idToken
-			user = await upsertUserFromOidc(ctx, result.claims)
-		} catch (error) {
-			if (error instanceof LoginRejected) return deny(error.message)
-			throw error
-		}
-		await onLogin(ctx, user)
-		const sessionId = await createSession(ctx, user.id, pending.organization_id, idToken)
-
-		if (pending.kind === 'device') {
-			const approved = await one(
-				db,
-				`UPDATE device_codes SET status = 'approved', session_id = $2
-				WHERE id = $1 AND status = 'pending' AND expires_at > now() RETURNING id`,
-				[pending.device_code_id, sessionId],
-			)
-			return approved
-				? page(c, 'Signed in', html`<p>Signed in as ${user.email}. You can close this tab.</p>`)
-				: page(c, 'Code expired', '<p>This device code has expired. Start the login again.</p>', 400)
-		}
-
-		const redirectUri = pending.client_redirect_uri
-		if (!redirectUri) throw new Error('Pending authorize login has no redirect_uri')
-		const code = randomToken()
-		await db.query(
-			`INSERT INTO auth_codes (code_hash, session_id, redirect_uri, code_challenge, expires_at)
-			VALUES ($1, $2, $3, $4, now() + interval '10 minutes')`,
-			[sha256(code), sessionId, redirectUri, pending.code_challenge],
-		)
-		const url = new URL(redirectUri)
-		url.searchParams.set('code', code)
-		if (pending.client_state) url.searchParams.set('state', pending.client_state)
-		return c.redirect(url.toString())
-	})
+		})
+	}
 
 	app.use('/user_management/authenticate', cors({ origin: '*', allowMethods: ['POST'], maxAge: 600 }))
 
@@ -281,7 +310,7 @@ export function authRoutes(app: Hono, ctx: Ctx) {
 		const safeReturnTo =
 			returnTo && URL.canParse(returnTo) && allowedOrigins.has(new URL(returnTo).origin) ? returnTo : undefined
 		// Ending the Keycloak session signs the user out of every app on the realm, so it is opt-in.
-		if (cfg.oidcLogout) {
+		if (cfg.oidcLogout && oidc) {
 			const url = await oidc.endSessionUrl({
 				idToken: session?.oidc_id_token,
 				postLogoutRedirectUri: safeReturnTo,
@@ -322,6 +351,8 @@ export function authRoutes(app: Hono, ctx: Ctx) {
 
 	// The confirm form carries a CSRF token so a cross-site POST cannot approve a code silently.
 	app.get('/user_management/device', (c) => {
+		const identity = oidc ? undefined : tailscaleUser(c)
+		if (!oidc && !identity) return tailscaleRequired(c)
 		const csrf = randomToken(16)
 		setCookie(c, CSRF_COOKIE, csrf, {
 			httpOnly: true,
@@ -330,11 +361,13 @@ export function authRoutes(app: Hono, ctx: Ctx) {
 			path: '/user_management/device',
 		})
 		const userCode = c.req.query('user_code') ?? ''
+		const signedInAs = identity ? html`<p>Signed in as ${identity.email} via Tailscale.</p>` : ''
 		return page(
 			c,
 			'Confirm device sign-in',
-			html`<p>Check that this code matches the one shown in your terminal.</p>
-				<form method="post">
+			html`<p>Check that this code matches the one shown in your terminal.</p>` +
+				signedInAs +
+				html`<form method="post">
 					<input type="hidden" name="csrf" value="${csrf}" />
 					<p>
 						<input
@@ -374,6 +407,6 @@ export function authRoutes(app: Hono, ctx: Ctx) {
 				'<p>This code is invalid or expired. <a href="/user_management/device">Try again</a>.</p>',
 				400,
 			)
-		return startLogin(c, { kind: 'device', device_code_id: device.id })
+		return login(c, { kind: 'device', device_code_id: device.id })
 	})
 }

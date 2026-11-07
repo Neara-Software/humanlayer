@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, type JWTPayload, jwtVerify } from 'jose'
 
-import type { Config } from './config'
+import type { OidcConfig } from './config'
 
 interface Discovery {
 	issuer: string
@@ -23,7 +23,7 @@ export interface IdTokenClaims extends JWTPayload {
 export type Oidc = ReturnType<typeof createOidc>
 
 /** Confidential OIDC client of the upstream IdP (Keycloak). */
-export function createOidc(cfg: Config['oidc'], redirectUri: string) {
+export function createOidc(cfg: OidcConfig, redirectUri: string) {
 	let discovery: Promise<Discovery> | undefined
 	let jwks: ReturnType<typeof createRemoteJWKSet> | undefined
 

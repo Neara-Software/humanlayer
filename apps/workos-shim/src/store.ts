@@ -9,16 +9,42 @@ import { userJson } from './serialize'
 export interface Ctx {
 	db: Db
 	cfg: Config
-	oidc: Oidc
+	/** Unset in tailscale mode. */
+	oidc: Oidc | undefined
 }
 
 export class LoginRejected extends Error {}
 
-/** Applies the verified-email / domain / group policy and returns the shim user for the IdP identity. */
-export async function upsertUserFromOidc(ctx: Ctx, claims: IdTokenClaims): Promise<UserRow> {
+/** Who signed in, from the IdP's id_token or from Tailscale's identity headers. */
+export interface Identity {
+	/** IdP subject; null for Tailscale, whose users are matched by email. */
+	sub: string | null
+	email: string
+	emailVerified: boolean
+	firstName: string | null
+	lastName: string | null
+	picture: string | null
+	groups: string[]
+}
+
+export const identityFromOidc = (claims: IdTokenClaims): Identity => ({
+	sub: claims.sub,
+	email: claims.email ?? '',
+	emailVerified: claims.email_verified === true,
+	firstName: claims.given_name ?? null,
+	lastName: claims.family_name ?? null,
+	picture: claims.picture ?? null,
+	groups: claims.groups ?? [],
+})
+
+/**
+ * Applies the verified-email / domain / group policy and returns the shim user.
+ * Users are found by sub, then by email, so a Keycloak login takes over a user first made through Tailscale.
+ */
+export async function upsertUser(ctx: Ctx, identity: Identity): Promise<UserRow> {
 	const { db, cfg } = ctx
-	const email = claims.email?.toLowerCase()
-	if (!email || claims.email_verified !== true) throw new LoginRejected('A verified email address is required.')
+	const email = identity.email.toLowerCase()
+	if (!email || !identity.emailVerified) throw new LoginRejected('A verified email address is required.')
 	const domain = email.split('@')[1] ?? ''
 	if (cfg.allowedEmailDomains.length > 0 && !cfg.allowedEmailDomains.includes(domain)) {
 		throw new LoginRejected(`Accounts from ${domain} are not allowed.`)
@@ -26,29 +52,30 @@ export async function upsertUserFromOidc(ctx: Ctx, claims: IdTokenClaims): Promi
 	if (cfg.requiredGroup) {
 		// Keycloak sends full group paths ("/team") when "Full group path" is on.
 		const wanted = cfg.requiredGroup.replace(/^\//, '')
-		if (!(claims.groups ?? []).some((group) => group.replace(/^\//, '') === wanted)) {
+		if (!identity.groups.some((group) => group.replace(/^\//, '') === wanted)) {
 			throw new LoginRejected(`You must be in the ${cfg.requiredGroup} group.`)
 		}
 	}
 
-	const profile = [email, claims.given_name ?? null, claims.family_name ?? null, claims.picture ?? null]
+	const profile = [email, identity.firstName, identity.lastName, identity.picture]
 	const existing =
-		(await one<{ id: string }>(db, 'SELECT id FROM users WHERE oidc_sub = $1', [claims.sub])) ??
-		(await one<{ id: string }>(db, 'SELECT id FROM users WHERE email = $1', [email]))
+		(identity.sub
+			? await one<{ id: string }>(db, 'SELECT id FROM users WHERE oidc_sub = $1', [identity.sub])
+			: undefined) ?? (await one<{ id: string }>(db, 'SELECT id FROM users WHERE email = $1', [email]))
 	if (existing) {
 		return oneOrThrow<UserRow>(
 			db,
-			`UPDATE users SET oidc_sub = $2, email = $3, email_verified = true, first_name = $4, last_name = $5,
-				profile_picture_url = $6, last_sign_in_at = now(), updated_at = now()
+			`UPDATE users SET oidc_sub = coalesce($2, oidc_sub), email = $3, email_verified = true, first_name = $4,
+				last_name = $5, profile_picture_url = $6, last_sign_in_at = now(), updated_at = now()
 			WHERE id = $1 RETURNING *`,
-			[existing.id, claims.sub, ...profile],
+			[existing.id, identity.sub, ...profile],
 		)
 	}
 	return oneOrThrow<UserRow>(
 		db,
 		`INSERT INTO users (id, oidc_sub, email, email_verified, first_name, last_name, profile_picture_url, last_sign_in_at)
 		VALUES ($1, $2, $3, true, $4, $5, $6, now()) RETURNING *`,
-		[newId('user'), claims.sub, ...profile],
+		[newId('user'), identity.sub, ...profile],
 	)
 }
 
@@ -132,7 +159,7 @@ export async function createSession(
 	ctx: Ctx,
 	userId: string,
 	preferredOrg: string | null,
-	idToken: string,
+	idToken: string | null,
 ): Promise<string> {
 	const session = await oneOrThrow<{ id: string }>(
 		ctx.db,

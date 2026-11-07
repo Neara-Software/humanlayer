@@ -11,7 +11,8 @@ import { createOidc } from './oidc'
 export async function createApp(cfg: Config, db: Db): Promise<Hono> {
 	await migrate(db)
 	await currentSigningKey(db)
-	const ctx = { db, cfg, oidc: createOidc(cfg.oidc, `${cfg.publicOrigin}/user_management/callback`) }
+	const oidc = cfg.oidc ? createOidc(cfg.oidc, `${cfg.publicOrigin}/user_management/callback`) : undefined
+	const ctx = { db, cfg, oidc }
 
 	const app = new Hono()
 	app.get('/health', (c) => c.text('ok'))

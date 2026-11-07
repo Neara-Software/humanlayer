@@ -1,4 +1,14 @@
+export type AuthMode = 'oidc' | 'tailscale'
+
+export interface OidcConfig {
+	issuer: string
+	clientId: string
+	clientSecret: string
+	scopes: string
+}
+
 export interface Config {
+	authMode: AuthMode
 	port: number
 	host: string
 	publicOrigin: string
@@ -6,7 +16,8 @@ export interface Config {
 	apiKey: string
 	clientId: string
 	allowedRedirectUris: string[]
-	oidc: { issuer: string; clientId: string; clientSecret: string; scopes: string }
+	/** Unset in tailscale mode. */
+	oidc: OidcConfig | undefined
 	allowedEmailDomains: string[]
 	requiredGroup: string | undefined
 	adminEmails: string[]
@@ -31,7 +42,15 @@ function list(value: string | undefined): string[] {
 }
 
 export function loadConfig(env: Env = process.env): Config {
+	const authMode = env.SHIM_AUTH_MODE ?? 'oidc'
+	if (authMode !== 'oidc' && authMode !== 'tailscale') {
+		throw new Error(`SHIM_AUTH_MODE must be oidc or tailscale, not ${authMode}`)
+	}
+	if (authMode === 'tailscale' && env.SHIM_REQUIRED_GROUP) {
+		throw new Error('SHIM_REQUIRED_GROUP needs SHIM_AUTH_MODE=oidc: Tailscale sends no groups')
+	}
 	return {
+		authMode,
 		port: Number(env.SHIM_PORT ?? 8720),
 		host: env.SHIM_HOST ?? '127.0.0.1',
 		publicOrigin: required(env, 'SHIM_PUBLIC_ORIGIN').replace(/\/$/, ''),
@@ -39,12 +58,15 @@ export function loadConfig(env: Env = process.env): Config {
 		apiKey: required(env, 'SHIM_API_KEY'),
 		clientId: required(env, 'SHIM_CLIENT_ID'),
 		allowedRedirectUris: list(env.SHIM_ALLOWED_REDIRECT_URIS),
-		oidc: {
-			issuer: required(env, 'OIDC_ISSUER').replace(/\/$/, ''),
-			clientId: required(env, 'OIDC_CLIENT_ID'),
-			clientSecret: required(env, 'OIDC_CLIENT_SECRET'),
-			scopes: env.OIDC_SCOPES ?? 'openid email profile',
-		},
+		oidc:
+			authMode === 'oidc'
+				? {
+						issuer: required(env, 'OIDC_ISSUER').replace(/\/$/, ''),
+						clientId: required(env, 'OIDC_CLIENT_ID'),
+						clientSecret: required(env, 'OIDC_CLIENT_SECRET'),
+						scopes: env.OIDC_SCOPES ?? 'openid email profile',
+					}
+				: undefined,
 		allowedEmailDomains: list(env.SHIM_ALLOWED_EMAIL_DOMAINS).map((d) => d.toLowerCase()),
 		requiredGroup: env.SHIM_REQUIRED_GROUP || undefined,
 		adminEmails: list(env.SHIM_ADMIN_EMAILS).map((e) => e.toLowerCase()),
