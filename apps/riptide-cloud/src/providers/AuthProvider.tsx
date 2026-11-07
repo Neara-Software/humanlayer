@@ -75,6 +75,14 @@ export const AuthProvider: FC<PropsWithChildren> = ({ children }) => {
 	return (
 		<AuthKitProvider
 			clientId={env.VITE_PUBLIC_WORKOS_CLIENT_ID}
+			// Self-hosting: a WorkOS-compatible auth server. Unset keeps api.workos.com.
+			apiHostname={import.meta.env.VITE_PUBLIC_WORKOS_API_HOSTNAME || undefined}
+			port={
+				import.meta.env.VITE_PUBLIC_WORKOS_API_PORT
+					? Number(import.meta.env.VITE_PUBLIC_WORKOS_API_PORT)
+					: undefined
+			}
+			https={import.meta.env.VITE_PUBLIC_WORKOS_API_HTTPS !== 'false'}
 			redirectUri={`${window.location.origin}/auth/callback`}
 			// TODO: set devMode back to `import.meta.env.DEV` once we have a WorkOS custom domain set up
 			devMode={true}

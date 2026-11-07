@@ -28,7 +28,12 @@ export const WorkosConfigLive = Layer.effect(
 		const workosRedirectUri = yield* EnvironmentVariable('WORKOS_REDIRECT_URI')
 		const workosApiKey = yield* EnvironmentVariable('WORKOS_API_KEY').pipe(Effect.map(Redacted.make))
 
-		const workos = new WorkOS(Redacted.value(workosApiKey))
+		// Self-hosting: point the SDK at a WorkOS-compatible server. Unset keeps api.workos.com.
+		const { WORKOS_API_HOSTNAME: apiHostname, WORKOS_API_PORT: port, WORKOS_API_HTTPS: https } = process.env
+		const workos = new WorkOS(
+			Redacted.value(workosApiKey),
+			apiHostname ? { apiHostname, port: port ? Number(port) : undefined, https: https !== 'false' } : {},
+		)
 
 		return {
 			workosClientId,

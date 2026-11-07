@@ -1,3 +1,5 @@
+import { WORKOS_URL } from '../lib/macros'
+
 export interface DeviceAuthResult {
 	access_token: string
 	refresh_token: string
@@ -19,7 +21,7 @@ interface DeviceCodeResponse {
  * WorkOS shows an org picker in the browser for multi-org users.
  */
 export async function requestDeviceCodes(clientId: string): Promise<DeviceCodeResponse> {
-	const resp = await fetch('https://api.workos.com/user_management/authorize/device', {
+	const resp = await fetch(`${WORKOS_URL}/user_management/authorize/device`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 		body: new URLSearchParams({ client_id: clientId }),
@@ -40,7 +42,7 @@ export async function pollForToken(clientId: string, deviceCode: string, interva
 	while (true) {
 		await new Promise((resolve) => setTimeout(resolve, interval * 1000))
 
-		const resp = await fetch('https://api.workos.com/user_management/authenticate', {
+		const resp = await fetch(`${WORKOS_URL}/user_management/authenticate`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 			body: new URLSearchParams({

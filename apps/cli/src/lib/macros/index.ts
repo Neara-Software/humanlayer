@@ -16,9 +16,11 @@ import {
 	ProdCloudOriginMacro,
 	ProdSyncOriginMacro,
 	ProdWorkosClientIdMacro,
+	WorkosUrlMacro,
 } from './_macros-do-not-import' with { type: 'macro' }
 
 export const BUILD_VERSION = BuildVersionMacro()
+export const WORKOS_URL = WorkosUrlMacro() ?? 'https://api.workos.com'
 
 export interface EnvironmentConfig {
 	workosClientId: string

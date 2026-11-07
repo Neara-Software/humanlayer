@@ -1,5 +1,7 @@
 import { WorkOS } from '@workos-inc/node'
 
+import { workosClientOptions } from './workos'
+
 // Extract method types from SDK
 type UserMgmt = WorkOS['userManagement']
 
@@ -88,7 +90,7 @@ export class WorkosSdkAdapterLive implements WorkosSdkAdapter {
 		redirectUri: string,
 		private readonly webhookSecret?: string,
 	) {
-		this.client = new WorkOS(apiKey)
+		this.client = new WorkOS(apiKey, workosClientOptions())
 		this.config = { clientId, redirectUri }
 	}
 

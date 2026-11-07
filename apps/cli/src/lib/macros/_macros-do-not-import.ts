@@ -91,3 +91,8 @@ export function ProdCloudOriginMacro() {
 export function ProdAppOriginMacro() {
 	return env('PROD_APP_ORIGIN')
 }
+
+// Self-hosting: base URL of a WorkOS-compatible auth server. Unset keeps api.workos.com.
+export function WorkosUrlMacro() {
+	return env('HUMANLAYER_WORKOS_URL')
+}

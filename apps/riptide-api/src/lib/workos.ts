@@ -1,4 +1,4 @@
-import { WorkOS } from '@workos-inc/node'
+import { WorkOS, type WorkOSOptions } from '@workos-inc/node'
 
 import { requireEnvironment } from './environment'
 
@@ -31,10 +31,17 @@ export function getWorkosRedirectUri(): string {
 	return _workosRedirectUri
 }
 
+// Self-hosting: point the SDK at a WorkOS-compatible server. Unset keeps api.workos.com.
+export function workosClientOptions(): WorkOSOptions {
+	const { WORKOS_API_HOSTNAME: apiHostname, WORKOS_API_PORT: port, WORKOS_API_HTTPS: https } = process.env
+	if (!apiHostname) return {}
+	return { apiHostname, port: port ? Number(port) : undefined, https: https !== 'false' }
+}
+
 // Export getter for singleton WorkOS client
 export function getWorkos(): WorkOS {
 	if (!_workos) {
-		_workos = new WorkOS(getWorkosApiKey())
+		_workos = new WorkOS(getWorkosApiKey(), workosClientOptions())
 	}
 	return _workos
 }
