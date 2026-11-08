@@ -69,7 +69,7 @@ export function TabStrip() {
 	const { isAvailable, tabs, selectedTabId, canCreateTab, createTab } = useMinimalistTabs()
 	if (!isAvailable) return null
 	return (
-		<div className={`top-tabs${hasMacWindowControls() ? ' window-controls' : ''}`} data-tauri-drag-region>
+		<div className={`top-tabs${hasMacWindowControls() ? ' window-controls' : ''}`} data-tauri-drag-region="deep">
 			<div role="tablist" aria-label="Open tabs" className="top-tab-list" onKeyDown={selectWithArrows}>
 				{tabs.map((tab, index) => (
 					<TabItem key={tab.id} {...tab} index={index} selected={tab.id === selectedTabId} />
