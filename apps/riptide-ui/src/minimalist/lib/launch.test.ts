@@ -7,6 +7,7 @@ import {
 	draftTitle,
 	launchError,
 	launchHost,
+	launchInTask,
 	slugify,
 	startTask,
 	workingCopy,
@@ -282,4 +283,50 @@ describe('startTask', () => {
 			})
 		},
 	)
+})
+
+describe('launchInTask', () => {
+	const settings: ComposerSettings = {
+		agent: 'claude',
+		model: 'opus',
+		effort: 'high',
+		fastMode: false,
+		permissionsMode: 'auto',
+	}
+	const repository = {
+		remoteUrl: 'git@github.com:acme/app.git',
+		repositoryIdentity: 'github.com/acme/app',
+		defaultBranch: 'main',
+		default: true,
+		autoPushBranch: true,
+		copyGlobs: [],
+	}
+
+	it('gives a project task without a workspace one on its first launch, then launches in it', async () => {
+		const api = {
+			projects: { v2: { repositorySources: { get: vi.fn(async () => ({ sources: [] })), upsert: vi.fn() } } },
+			tasks: { v2: { createWorkspace: vi.fn(async () => ({ workspaceId: 'ws-1' })) } },
+			sessions: { v2: { create: vi.fn(async () => ({})) }, launch: vi.fn() },
+		}
+		await launchInTask(
+			api as unknown as RiptideApiClient,
+			{ id: 'task-1', workspace_id: null, slug: 'find-bugs-1021' },
+			{
+				sessionId: 's1',
+				eventId: 'e1',
+				text: 'go',
+				hostId: 'h1',
+				workingDirectory: '/old',
+				settings,
+				project: { id: 'p1', repositories: [repository] },
+			},
+		)
+		expect(api.tasks.v2.createWorkspace.mock.calls[0]?.[0]).toEqual({
+			taskId: 'task-1',
+			workspaceId: 'task-1',
+			repositories: [{ ...repository, branch: 'find-bugs-1021' }],
+		})
+		expect(api.sessions.v2.create.mock.calls[0]?.[0]).toMatchObject({ taskId: 'task-1', workspaceId: 'ws-1' })
+		expect(api.sessions.launch).not.toHaveBeenCalled()
+	})
 })

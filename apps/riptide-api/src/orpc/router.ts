@@ -219,6 +219,7 @@ import { listTasksProcedure } from './api/tasks/list.effect'
 import { reassignTaskOwnerProcedure } from './api/tasks/reassign-owner'
 import { saveTaskDraftProcedure } from './api/tasks/saveDraft'
 import { updateTaskProcedure } from './api/tasks/update'
+import { createTaskWorkspaceV2Procedure } from './api/tasks/v2/create-workspace.effect'
 import { createTaskV2Procedure } from './api/tasks/v2/create.effect'
 import { createUploadProcedure } from './api/uploads/create.effect'
 import { getDownloadUrlProcedure } from './api/uploads/download-url.effect'
@@ -430,6 +431,7 @@ export const apiRouter = os.router({
 		list: listTasksProcedure,
 		v2: {
 			create: createTaskV2Procedure,
+			createWorkspace: createTaskWorkspaceV2Procedure,
 		},
 	},
 	projects: {

@@ -338,16 +338,20 @@ type SessionInTask = {
 	/** Used by directory tasks; project tasks get their workspace from the server. */
 	workingDirectory: string
 	settings: ComposerSettings
+	/** The task's project, when it has none of its workspace yet: the first launch makes one. */
+	project?: { id: string; repositories: readonly ProjectRepository[] }
 }
 
 /**
  * Starts another session in an existing task. Project tasks go through
- * `sessions.v2.create` so the server places the workspace; directory tasks use
- * the older launch with the directory the task already runs in.
+ * `sessions.v2.create` so the server places the workspace; a project task
+ * without a workspace (one moved or imported into the project) first gets one,
+ * on a branch named as `startTask` names it. Directory tasks use the older
+ * launch with the directory the task already runs in.
  */
 export async function launchInTask(
 	api: RiptideApiClient,
-	task: Pick<Task, 'id' | 'workspace_id'>,
+	task: Pick<Task, 'id' | 'workspace_id'> & Partial<Pick<Task, 'slug'>>,
 	input: SessionInTask,
 ) {
 	const shared = {
@@ -357,9 +361,19 @@ export async function launchInTask(
 		hostId: input.hostId,
 		...launchFields(input.settings),
 	}
-	if (task.workspace_id) {
+	let workspaceId = task.workspace_id
+	if (!workspaceId && input.project) {
+		const branch = branchName(readGitPrefs().branchPrefix, task.slug ?? task.id)
+		const repositories = input.project.repositories.map((repository) => ({ ...repository, branch }))
+		await ensureRepositorySources(api, input.project.id, input.hostId)
+		;({ workspaceId } = await api.tasks.v2.createWorkspace(
+			{ taskId: task.id, workspaceId: task.id, repositories },
+			{ context: { silent: true } },
+		))
+	}
+	if (workspaceId) {
 		await api.sessions.v2.create(
-			{ ...shared, sessionId: input.sessionId, workspaceId: task.workspace_id, title: null },
+			{ ...shared, sessionId: input.sessionId, workspaceId, title: null },
 			{ context: { silent: true } },
 		)
 		return

@@ -95,8 +95,12 @@ export function NewTask({
 		? existingWorkspace.data?.workspace.projectId
 		: existing.task?.project_id
 	const [hostId, setHostId] = useState<string | null>(requestedHostId ?? null)
+	// A project task without a workspace gets one on its first launch.
+	const existingProject = existing.task?.workspace_id
+		? undefined
+		: projects.data?.find((project) => project.id === existing.task?.project_id)
 	// A project task's workspace can be set up on any host; a directory task stays where the directory is.
-	const movable = Boolean(existing.task?.workspace_id)
+	const movable = Boolean(existing.task?.workspace_id || existingProject)
 	const taskHost = hosts.find((entry) => entry.host.host_id === latestExisting?.host_id) ?? null
 	const host = launchHost(hosts, {
 		picked: hostId,
@@ -213,7 +217,10 @@ export function NewTask({
 		blocker = 'Loading workspace…'
 	else if (existingTaskId && existing.task?.workspace_id && existingWorkspace.isError)
 		blocker = 'Could not load workspace. Refresh this task and try again.'
-	else if (
+	else if (existingTaskId && !existing.task?.workspace_id && existing.task?.project_id) {
+		if (projects.isPending) blocker = 'Loading…'
+		else if (!existingProject) blocker = "This task's project is archived or not shared with you"
+	} else if (
 		existingTaskId &&
 		!existing.task?.workspace_id &&
 		!latestExisting?.working_directory &&
@@ -245,6 +252,7 @@ export function NewTask({
 					workingDirectory:
 						latestExisting?.working_directory ?? existing.task.default_working_directory ?? '',
 					settings,
+					project: existingProject,
 				})
 				rememberSettings(settings)
 				setDraft('')

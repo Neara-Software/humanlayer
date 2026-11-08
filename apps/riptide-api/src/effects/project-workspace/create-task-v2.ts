@@ -63,28 +63,7 @@ export const createTaskV2 = Effect.fn('project_workspace.create_task_v2')(functi
 		Effect.gen(function* () {
 			yield* requireProjectsV2Enabled(transaction, input.actor)
 
-			const [project] = yield* transaction.query(
-				transaction.client
-					.select()
-					.from(projects)
-					.where(
-						and(
-							projectReadableByActor(input.actor),
-							eq(projects.id, input.projectId),
-							eq(projects.archived, false),
-						),
-					)
-					.limit(1),
-			)
-			if (!project) return yield* new ProjectNotFound({ projectId: input.projectId })
-
-			const parsedProject = projectSelectSchema.safeParse(project)
-			if (!parsedProject.success) {
-				yield* Effect.logError(parsedProject.error)
-				yield* Effect.sync(() => Sentry.captureException(parsedProject.error))
-				return yield* new ProjectPersistenceUnavailable({ operation: 'parse_project' })
-			}
-			yield* validateWorkspaceRepositories(parsedProject.data.repositories, input.repositories)
+			yield* readWorkspaceProject(transaction, input.actor, input.projectId, input.repositories)
 
 			const [host] = yield* transaction.query(
 				transaction.client
@@ -105,23 +84,10 @@ export const createTaskV2 = Effect.fn('project_workspace.create_task_v2')(functi
 				})
 			}
 
-			const defaultRepo =
-				input.defaultRepositoryIdentity !== undefined
-					? input.repositories.find((r) => r.repositoryIdentity === input.defaultRepositoryIdentity)
-					: input.repositories.find((r) => r.default)
-			if (!defaultRepo) {
-				return yield* new ProjectLocationInvalid({
-					message: 'Default repository could not be determined',
-				})
-			}
-
+			const repositories = yield* withDefaultRepository(input.repositories, input.defaultRepositoryIdentity)
 			const workspaceId = input.workspaceId
 			const taskId = input.taskId
 			const hostId = input.firstSession.hostId
-			const repositories = input.repositories.map((repository) => ({
-				...repository,
-				default: repository.repositoryIdentity === defaultRepo.repositoryIdentity,
-			}))
 			const defaultWorkingDirectory = taskWorkspaceSessionDirectory(taskWorkspaceRoot(input.slug), repositories)
 			const taskValues = {
 				organization_id: input.actor.organizationId,
@@ -175,39 +141,15 @@ export const createTaskV2 = Effect.fn('project_workspace.create_task_v2')(functi
 				return { result: 'already-exists' as const, transactionId: txId, taskId, workspaceId, sessionId }
 			}
 
-			const [workspace] = yield* transaction.query(
-				transaction.client
-					.insert(workspaces)
-					.values({
-						id: workspaceId,
-						organization_id: input.actor.organizationId,
-						project_id: input.projectId,
-						name: input.name,
-						created_by: input.actor.userId,
-						resource_owner_user_id: input.actor.userId,
-						repositories,
-					})
-					.onConflictDoNothing()
-					.returning(),
-			)
-
-			if (!workspace) {
-				const existing = yield* transaction.query(
-					transaction.client
-						.select({ id: workspaces.id })
-						.from(workspaces)
-						.where(
-							and(
-								eq(workspaces.id, workspaceId),
-								eq(workspaces.organization_id, input.actor.organizationId),
-							),
-						)
-						.limit(1),
-				)
-				if (!existing[0]) {
-					return yield* new ProjectPersistenceUnavailable({ operation: 'create_workspace' })
-				}
-			}
+			yield* insertWorkspace(transaction, {
+				id: workspaceId,
+				organizationId: input.actor.organizationId,
+				projectId: input.projectId,
+				name: input.name,
+				createdBy: input.actor.userId,
+				ownerUserId: input.actor.userId,
+				repositories,
+			})
 
 			const [task] = existingTask
 				? yield* transaction.query(
@@ -442,7 +384,92 @@ export const createTaskV2 = Effect.fn('project_workspace.create_task_v2')(functi
 	return result
 })
 
-function requireProjectsV2Enabled(transaction: PostgresTransaction, actor: ProjectActorContext) {
+/** The project a workspace is made from: readable by the actor, not archived, and matching the repositories. */
+export function readWorkspaceProject(
+	transaction: PostgresTransaction,
+	actor: ProjectActorContext,
+	projectId: string,
+	repositories: WorkspaceRepositories,
+) {
+	return Effect.gen(function* () {
+		const [project] = yield* transaction.query(
+			transaction.client
+				.select()
+				.from(projects)
+				.where(and(projectReadableByActor(actor), eq(projects.id, projectId), eq(projects.archived, false)))
+				.limit(1),
+		)
+		if (!project) return yield* new ProjectNotFound({ projectId })
+
+		const parsedProject = projectSelectSchema.safeParse(project)
+		if (!parsedProject.success) {
+			yield* Effect.logError(parsedProject.error)
+			yield* Effect.sync(() => Sentry.captureException(parsedProject.error))
+			return yield* new ProjectPersistenceUnavailable({ operation: 'parse_project' })
+		}
+		yield* validateWorkspaceRepositories(parsedProject.data.repositories, repositories)
+	})
+}
+
+/** The repositories with exactly one default: the named one, else the one already marked. */
+export function withDefaultRepository(repositories: WorkspaceRepositories, defaultRepositoryIdentity?: string) {
+	const defaultRepo =
+		defaultRepositoryIdentity !== undefined
+			? repositories.find((r) => r.repositoryIdentity === defaultRepositoryIdentity)
+			: repositories.find((r) => r.default)
+	if (!defaultRepo) {
+		return Effect.fail(new ProjectLocationInvalid({ message: 'Default repository could not be determined' }))
+	}
+	return Effect.succeed(
+		repositories.map((repository) => ({
+			...repository,
+			default: repository.repositoryIdentity === defaultRepo.repositoryIdentity,
+		})),
+	)
+}
+
+/** Inserts the workspace; a retry with the same id finds the one it made. */
+export function insertWorkspace(
+	transaction: PostgresTransaction,
+	workspace: {
+		id: string
+		organizationId: string
+		projectId: string
+		name: string
+		createdBy: string
+		ownerUserId: string
+		repositories: WorkspaceRepositories
+	},
+) {
+	return Effect.gen(function* () {
+		const [inserted] = yield* transaction.query(
+			transaction.client
+				.insert(workspaces)
+				.values({
+					id: workspace.id,
+					organization_id: workspace.organizationId,
+					project_id: workspace.projectId,
+					name: workspace.name,
+					created_by: workspace.createdBy,
+					resource_owner_user_id: workspace.ownerUserId,
+					repositories: workspace.repositories,
+				})
+				.onConflictDoNothing()
+				.returning(),
+		)
+		if (inserted) return
+		const [existing] = yield* transaction.query(
+			transaction.client
+				.select({ id: workspaces.id })
+				.from(workspaces)
+				.where(and(eq(workspaces.id, workspace.id), eq(workspaces.organization_id, workspace.organizationId)))
+				.limit(1),
+		)
+		if (!existing) return yield* new ProjectPersistenceUnavailable({ operation: 'create_workspace' })
+	})
+}
+
+export function requireProjectsV2Enabled(transaction: PostgresTransaction, actor: ProjectActorContext) {
 	return transaction
 		.query(
 			transaction.client

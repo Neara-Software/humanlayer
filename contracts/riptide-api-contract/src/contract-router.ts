@@ -223,6 +223,7 @@ import { reassignTaskOwnerContract } from './api/tasks/reassign-owner'
 import { saveTaskDraftContract } from './api/tasks/saveDraft'
 import { updateTaskContract } from './api/tasks/update'
 import { createTaskV2Contract } from './api/tasks/v2/create'
+import { createTaskWorkspaceV2Contract } from './api/tasks/v2/create-workspace'
 import { createUploadContract } from './api/uploads/create'
 import { getDownloadUrlContract } from './api/uploads/download-url'
 import { getPresignedUrlContract } from './api/uploads/get-presigned-url'
@@ -434,6 +435,7 @@ export const RiptideApiContract = {
 		list: listTasksContract,
 		v2: {
 			create: createTaskV2Contract,
+			createWorkspace: createTaskWorkspaceV2Contract,
 		},
 	},
 	projects: {
