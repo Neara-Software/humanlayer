@@ -5,6 +5,7 @@ import type { RepositorySourcePreference } from '@humanlayer/schemas/effect/proj
 import { and, eq } from 'drizzle-orm'
 import { Clock, Effect } from 'effect'
 
+import { projectsV2Enabled } from '../../lib/projects-v2'
 import { requireTaskEditPermission } from '../services/postgres/helpers'
 import { PostgresDb, type PostgresTransaction } from '../services/postgres/postgres-db.service'
 import {
@@ -38,7 +39,7 @@ const requireProjectsV2Enabled = (transaction: PostgresTransaction, actor: Recov
 				)
 				.limit(1),
 		)
-		.pipe(Effect.flatMap((rows) => (rows[0]?.enabled ? Effect.void : new ProjectsV2Disabled())))
+		.pipe(Effect.flatMap((rows) => (projectsV2Enabled(rows[0]?.enabled) ? Effect.void : new ProjectsV2Disabled())))
 
 const loadRecoveryTarget = Effect.fn('project_workspace.load_recovery_target')(function* (
 	transaction: PostgresTransaction,

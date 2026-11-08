@@ -8,6 +8,7 @@ import { Effect } from 'effect'
 import { mapPostgresErrorToResponse } from '../../../../effects/services/postgres/error-mapping'
 import { PostgresDb } from '../../../../effects/services/postgres/postgres-db.service'
 import { Sentry } from '../../../../instrument'
+import { projectsV2Enabled } from '../../../../lib/projects-v2'
 import { effectOrpcBaseOrganizationRequired } from '../../../effect-base'
 
 const USER_DEFAULTS = {
@@ -115,7 +116,7 @@ export const getUserSettingsEffectProcedure = effectOrpcBaseOrganizationRequired
 						preferBatchQueueDelivery: user.prefer_batch_queue_delivery,
 						sidebarVariant: user.sidebar_variant,
 						showTaskPhaseLabels: user.show_task_phase_labels,
-						projectsV2Enabled: user.projects_v2_enabled,
+						projectsV2Enabled: projectsV2Enabled(user.projects_v2_enabled),
 						projectsV2AssignedVariant: user.projects_v2_assigned_variant,
 						projectsV2AssignedAt:
 							user.projects_v2_assigned_at === null ? null : Number(user.projects_v2_assigned_at),

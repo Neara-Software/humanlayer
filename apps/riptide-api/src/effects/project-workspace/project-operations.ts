@@ -16,6 +16,7 @@ import * as Sentry from '@sentry/node'
 import { and, asc, eq } from 'drizzle-orm'
 import { Clock, Effect } from 'effect'
 
+import { projectsV2Enabled } from '../../lib/projects-v2'
 import { PostgresDb, type PostgresTransaction } from '../services/postgres/postgres-db.service'
 import {
 	ProjectLocationInvalid,
@@ -326,7 +327,7 @@ function requireProjectsV2Enabled(transaction: PostgresTransaction, actor: Proje
 				)
 				.limit(1),
 		)
-		.pipe(Effect.flatMap((rows) => (rows[0]?.enabled ? Effect.void : new ProjectsV2Disabled())))
+		.pipe(Effect.flatMap((rows) => (projectsV2Enabled(rows[0]?.enabled) ? Effect.void : new ProjectsV2Disabled())))
 }
 
 function requireHostBelongsToUser(transaction: PostgresTransaction, actor: ProjectActorContext, hostId: string) {

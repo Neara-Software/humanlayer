@@ -11,6 +11,7 @@ import { and, eq } from 'drizzle-orm'
 import { Effect } from 'effect'
 
 import { canWriteSession, checkTaskWritePermission } from '../../db/task-auth'
+import { projectsV2Enabled } from '../../lib/projects-v2'
 import { getTransactionId } from '../services/postgres/helpers'
 import { PostgresDb } from '../services/postgres/postgres-db.service'
 import { SessionTitleGeneration } from '../services/session-title-generation/session-title-generation.service'
@@ -55,7 +56,7 @@ export const createSessionV2 = Effect.fn('project_workspace.create_session_v2')(
 						)
 						.limit(1),
 				)
-				if (settings?.projects_v2_enabled !== true) return yield* new ProjectsV2Disabled()
+				if (!projectsV2Enabled(settings?.projects_v2_enabled)) return yield* new ProjectsV2Disabled()
 				const access = yield* transaction.run(() =>
 					checkTaskWritePermission(
 						transaction.client,

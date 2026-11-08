@@ -21,6 +21,7 @@ import { Effect } from 'effect'
 import { hash } from 'ohash'
 
 import type { PreparedTicketArtifactBundle } from '../../lib/linear-ticket-artifacts'
+import { projectsV2Enabled } from '../../lib/projects-v2'
 import { getTransactionId } from '../services/postgres/helpers'
 import { PostgresDb, type PostgresTransaction } from '../services/postgres/postgres-db.service'
 import { SessionTitleGeneration } from '../services/session-title-generation/session-title-generation.service'
@@ -452,7 +453,7 @@ function requireProjectsV2Enabled(transaction: PostgresTransaction, actor: Proje
 				)
 				.limit(1),
 		)
-		.pipe(Effect.flatMap((rows) => (rows[0]?.enabled ? Effect.void : new ProjectsV2Disabled())))
+		.pipe(Effect.flatMap((rows) => (projectsV2Enabled(rows[0]?.enabled) ? Effect.void : new ProjectsV2Disabled())))
 }
 
 function validateWorkspaceRepositories(

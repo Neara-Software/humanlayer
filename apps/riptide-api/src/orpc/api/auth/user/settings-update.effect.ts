@@ -10,6 +10,7 @@ import { ExperimentAnalyticsService } from '../../../../effects/services/experim
 import { mapPostgresErrorToResponse } from '../../../../effects/services/postgres/error-mapping'
 import { PostgresDb } from '../../../../effects/services/postgres/postgres-db.service'
 import { Sentry } from '../../../../instrument'
+import { projectsV2Enabled } from '../../../../lib/projects-v2'
 import { effectOrpcBaseOrganizationRequired } from '../../../effect-base'
 
 const ORG_DEFAULTS = {
@@ -227,7 +228,7 @@ export const updateUserSettingsEffectProcedure = effectOrpcBaseOrganizationRequi
 				preferBatchQueueDelivery: row.prefer_batch_queue_delivery,
 				sidebarVariant: row.sidebar_variant,
 				showTaskPhaseLabels: row.show_task_phase_labels,
-				projectsV2Enabled: row.projects_v2_enabled,
+				projectsV2Enabled: projectsV2Enabled(row.projects_v2_enabled),
 				projectsV2AssignedVariant: row.projects_v2_assigned_variant,
 				projectsV2AssignedAt: row.projects_v2_assigned_at === null ? null : Number(row.projects_v2_assigned_at),
 				experiments: row.experiment_flags,

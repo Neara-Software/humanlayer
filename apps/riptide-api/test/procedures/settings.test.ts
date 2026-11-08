@@ -262,6 +262,21 @@ describe('settings', async () => {
 		expect(persistedAfterOptOut.userSettings.projectsV2Enabled).toBe(true)
 	})
 
+	test('PROJECTS_V2_DEFAULT_ENABLED=true turns Projects V2 on without a stored opt-in', async () => {
+		vi.stubEnv('PROJECTS_V2_DEFAULT_ENABLED', 'true')
+		try {
+			const context = createMockApiContext({
+				auth: makeUserAuth(getUniqueUserId(), await createTestOrg()),
+				services,
+			})
+			expect((await call(getUserSettingsProcedure, {}, { context })).userSettings.projectsV2Enabled).toBe(true)
+			const updated = await call(updateUserSettingsProcedure, { theme: 'monokai' }, { context })
+			expect(updated.userSettings.projectsV2Enabled).toBe(true)
+		} finally {
+			vi.unstubAllEnvs()
+		}
+	})
+
 	test('Projects V2 opt-out on a new settings row stays off', async () => {
 		const userId = getUniqueUserId()
 		const orgId = await createTestOrg()
