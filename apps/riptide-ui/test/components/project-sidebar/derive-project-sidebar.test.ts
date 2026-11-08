@@ -86,6 +86,18 @@ describe('project sidebar projection', () => {
 		expect(result.emptyProjects.map((item) => item.id)).toEqual(['empty'])
 	})
 
+	test('a task moved into a project without a workspace groups under that project', () => {
+		const result = deriveProjectSidebar({
+			...defaults(),
+			projects: [project('alpha')],
+			tasks: [{ ...task('moved'), projectId: 'alpha' }, task('loose'), { ...task('gone'), projectId: 'deleted' }],
+		})
+		expect(result.groups.map((group) => [group.id, group.tasks.map((item) => item.id)])).toEqual([
+			['alpha', ['moved']],
+			['other', ['loose', 'gone']],
+		])
+	})
+
 	test('pending/error workspace relations are not classified as directory tasks', () => {
 		const result = deriveProjectSidebar({
 			...defaults(),

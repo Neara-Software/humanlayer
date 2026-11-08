@@ -2,9 +2,11 @@ import { Link } from '@tanstack/react-router'
 import { Archive, MoreHorizontal } from 'lucide-react'
 import { useRef, useState } from 'react'
 
+import { useSettingsStore } from '@/hooks/stores/settingsStore'
 import { useBrowserAuth as useAuth } from '@/hooks/use-browser-auth'
 import { WiredUserAvatar } from '@/minimalist/components/Avatar'
 import { Menu, MenuItem, MenuSeparator } from '@/minimalist/components/Menu'
+import { MoveToProjectDialog } from '@/minimalist/components/MoveToProjectDialog'
 import { TextDialog } from '@/minimalist/components/TextDialog'
 import type { TaskRow } from '@/minimalist/lib/data'
 import { newTaskDraftKey, useHasDraft } from '@/minimalist/lib/drafts'
@@ -31,6 +33,9 @@ export function TaskItem({ row, selected }: { row: TaskRow; selected: boolean })
 	const anchor = useRef<HTMLDivElement>(null)
 	const [open, setOpen] = useState(false)
 	const [renaming, setRenaming] = useState(false)
+	const [moving, setMoving] = useState(false)
+	// A task in a project workspace stays in that workspace's project.
+	const movable = useSettingsStore((state) => state.projectsV2Enabled) && !row.task.workspace_id
 	const taskId = row.task.id
 	const latest = row.latest
 	const archive = () => {
@@ -103,6 +108,15 @@ export function TaskItem({ row, selected }: { row: TaskRow; selected: boolean })
 						else if (latest) void markUnread(taskId, latest.id)
 					}}
 				/>
+				{movable ? (
+					<MenuItem
+						label="Move to project…"
+						onSelect={() => {
+							setOpen(false)
+							setMoving(true)
+						}}
+					/>
+				) : null}
 				<MenuItem label="Archive" kbd={shortcutHint('archive')} onSelect={archive} />
 				<MenuSeparator />
 				<MenuItem
@@ -129,6 +143,7 @@ export function TaskItem({ row, selected }: { row: TaskRow; selected: boolean })
 					onSave={(name) => api.tasks.update({ taskId, name })}
 				/>
 			) : null}
+			{moving ? <MoveToProjectDialog task={row.task} onClose={() => setMoving(false)} /> : null}
 		</div>
 	)
 }

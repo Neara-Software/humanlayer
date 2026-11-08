@@ -1,13 +1,16 @@
 import { artifactOperationsLog } from '@humanlayer/db/tables/artifact-operations-log'
 import { artifactVersions } from '@humanlayer/db/tables/artifact-versions'
 import { artifacts } from '@humanlayer/db/tables/artifacts'
+import { projects } from '@humanlayer/db/tables/projects'
 import { taskUserSettings } from '@humanlayer/db/tables/task-user-settings'
 import { tasks } from '@humanlayer/db/tables/tasks'
+import { workspaces } from '@humanlayer/db/tables/workspaces'
 import { ORPCError } from '@orpc/server'
 import { and, eq } from 'drizzle-orm'
 
 import { getTxId } from '../../../db/get-tx-id'
 import { checkTaskWritePermission, type TaskWithAuth } from '../../../db/task-auth'
+import { projectReadableByActor } from '../../../effects/project-workspace/project-authorization'
 import logger from '../../../logger'
 import { apiBaseOrgRequired, requiresBillingMiddleware } from '../../base'
 
@@ -39,6 +42,7 @@ export const updateTaskProcedure = apiBaseOrgRequired.tasks.update
 			autoAdvanceWorktreeToImplementation,
 			autoAdvanceImplementationToPr,
 			slackNotificationsMuted,
+			projectId,
 		} = input
 		const organizationId = context.auth.organizationId
 		const { services } = context
@@ -67,7 +71,8 @@ export const updateTaskProcedure = apiBaseOrgRequired.tasks.update
 			autoAdvancePlanToWorktree === undefined &&
 			autoAdvanceWorktreeToImplementation === undefined &&
 			autoAdvanceImplementationToPr === undefined &&
-			slackNotificationsMuted === undefined
+			slackNotificationsMuted === undefined &&
+			projectId === undefined
 
 		try {
 			const txResult = await db.transaction(async (tx) => {
@@ -233,6 +238,38 @@ export const updateTaskProcedure = apiBaseOrgRequired.tasks.update
 					throw errors.BAD_REQUEST({ data: { message: 'GitHub ticket identity is incomplete or stale' } })
 				}
 
+				// Moving between projects needs edit access (checked above), a readable non-archived project in
+				// this org, and must agree with the task's workspace, whose project is fixed.
+				if (projectId !== undefined) {
+					if (projectId !== null) {
+						const [project] = await tx
+							.select({ id: projects.id })
+							.from(projects)
+							.where(
+								and(
+									projectReadableByActor({ organizationId, userId: context.auth.userId }),
+									eq(projects.id, projectId),
+									eq(projects.archived, false),
+								),
+							)
+							.limit(1)
+						if (!project) throw errors.NOT_FOUND({ data: { message: 'Project not found' } })
+					}
+					const [workspace] = await tx
+						.select({ projectId: workspaces.project_id })
+						.from(tasks)
+						.innerJoin(workspaces, eq(workspaces.id, tasks.workspace_id))
+						.where(eq(tasks.id, taskId))
+						.limit(1)
+					if (workspace && workspace.projectId !== projectId) {
+						throw errors.BAD_REQUEST({
+							data: {
+								message: "This task's workspace belongs to another project, so the task cannot move",
+							},
+						})
+					}
+				}
+
 				// Build update object with only provided fields
 				// For non-owners, user-settings fields were already handled above
 				const updates: Partial<typeof tasks.$inferInsert> = {}
@@ -250,6 +287,7 @@ export const updateTaskProcedure = apiBaseOrgRequired.tasks.update
 				// Owner-only task-level fields; non-owners were already rejected above via hasTaskOnlyFields.
 				if (workflowType !== undefined) updates.workflow_type = workflowType
 				if (slackNotificationsMuted !== undefined) updates.slack_notifications_muted = slackNotificationsMuted
+				if (projectId !== undefined) updates.project_id = projectId
 				if (!userSettingsHandledSeparately) {
 					// Only owners reach here with these fields
 					if (defaultWorkingDirectory !== undefined)

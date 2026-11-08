@@ -24,6 +24,8 @@ export interface ProjectSidebarGroup {
 }
 export interface ProjectTaskInput extends SidebarTaskRow {
 	workspaceId: string | null
+	/** Used when the task has no workspace; a workspace task belongs to its workspace's project. */
+	projectId?: string | null
 	allSessionIds?: string[]
 }
 export type WorkspaceRead = { state: 'pending' | 'error' | 'missing' } | { state: 'ready'; data: WorkspaceStatus }
@@ -47,6 +49,7 @@ interface TaskRecord {
 	is_draft: boolean
 	resource_owner_user_id: string | null
 	workspace_id: string | null
+	project_id?: string | null
 	created_at: bigint | null
 	updated_at: bigint | null
 }
@@ -95,6 +98,7 @@ export function selectProjectSidebarTasks(
 			taskCreatedAt: task.created_at,
 			taskUpdatedAt: task.updated_at,
 			workspaceId: task.workspace_id,
+			projectId: task.project_id ?? null,
 			ownerUserId: task.resource_owner_user_id,
 			sessionCount: sessions.length,
 			latestSessionActivity,
@@ -160,7 +164,12 @@ export function deriveProjectSidebar({
 	let failedRelations = false
 	for (const [index, input] of tasks.entries()) {
 		const workspace = workspaces.get(input.taskId)
-		const projectId = workspace?.state === 'ready' ? workspace.data.workspace.projectId : undefined
+		const projectId =
+			workspace?.state === 'ready'
+				? workspace.data.workspace.projectId
+				: input.workspaceId
+					? undefined
+					: (input.projectId ?? undefined)
 		const project = projectId ? projectById.get(projectId) : undefined
 		const pending = Boolean(
 			input.workspaceId &&

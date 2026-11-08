@@ -343,6 +343,20 @@ export function createTaskActions(
 		},
 	})
 
+	/** Moves a task into a project, or out of any project with `projectId: null`. */
+	const moveTaskToProject = createOptimisticAction<{ taskId: string; projectId: string | null }>({
+		onMutate: ({ taskId, projectId }) => {
+			tasksCollection.update(taskId, (draft) => {
+				draft.project_id = projectId
+			})
+		},
+		mutationFn: async ({ taskId, projectId }) => {
+			const response = await api.tasks.update({ taskId, projectId })
+			await tasksConfirmTx(response.transactionId)
+			return response
+		},
+	})
+
 	const archiveTask = createOptimisticAction<ArchiveTaskWithSessionsParams>({
 		onMutate: ({ taskId, archived, cascadeToSessions, sessionIds }) => {
 			// Update task optimistically
@@ -554,6 +568,7 @@ export function createTaskActions(
 		updateTaskDraft,
 		updateTaskName,
 		updateTaskAutoAdvance,
+		moveTaskToProject,
 		archiveTask,
 		reassignTaskOwner,
 	}

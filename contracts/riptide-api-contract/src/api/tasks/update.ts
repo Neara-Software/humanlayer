@@ -39,6 +39,12 @@ export const UpdateTaskInputSchema = z.object({
 		.describe('Auto-advance from implementation to PR description'),
 	// Task-level Slack mute (owner-only). Gates owner-filtered Slack notification automations for this task.
 	slackNotificationsMuted: z.boolean().optional().describe('Mute owner-filtered Slack notifications for this task'),
+	// Project grouping. null moves the task out of any project ("Other tasks").
+	projectId: z
+		.uuid()
+		.nullable()
+		.optional()
+		.describe('Move the task into this project; null removes it from its project'),
 })
 
 export const UpdateTaskOutputSchema = z.object({
